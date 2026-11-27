@@ -13,7 +13,7 @@ class CommentSchemaIn(Schema):
     @field_validator("body")
     @classmethod
     def non_empty(cls, v: str) -> str:
-        if not v:
+        if v is None:
             raise ValueError("can't be blank")
         return v
 
