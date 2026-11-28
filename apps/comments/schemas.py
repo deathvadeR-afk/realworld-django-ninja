@@ -15,6 +15,8 @@ class CommentSchemaIn(Schema):
     def non_empty(cls, v: str) -> str:
         if v is None:
             raise ValueError("can't be blank")
+        if v == "":
+            raise ValueError("can't be blank")
         return v
 
 

@@ -145,3 +145,28 @@ class CommentViewTestCase(TestCase):
         response = self.client.delete(f"/articles/{self.article_0.slug}/comments/{self.comment_1.id}")
         self.assertEqual(response.status_code, 401)
         self.assertEqual(self.article_1.comment_set.count(), 2)
+
+    def test_cant_create_comment_with_empty_body(self):
+        response = self.client.post(
+            f"/articles/{self.article_1.slug}/comments",
+            json={"comment": {"body": ""}},
+        )
+        self.assertEqual(response.status_code, 422)
+        errors = response.data["detail"]
+        self.assertTrue(any("can't be blank" in error["msg"] and "body" in error["loc"] for error in errors))
+
+    def test_empty_body_does_not_change_comment_count(self):
+        self.assertEqual(self.article_1.comment_set.count(), 2)
+        self.client.post(
+            f"/articles/{self.article_1.slug}/comments",
+            json={"comment": {"body": ""}},
+        )
+        self.assertEqual(self.article_1.comment_set.count(), 2)
+        self.assertFalse(self.article_1.comment_set.filter(content="").exists())
+
+    def test_create_comment_with_non_empty_body_returns_201(self):
+        response = self.client.post(
+            f"/articles/{self.article_1.slug}/comments",
+            json={"comment": {"body": "This is a test comment"}},
+        )
+        self.assertEqual(response.status_code, 201)
