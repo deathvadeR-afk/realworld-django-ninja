@@ -145,3 +145,34 @@ class CommentViewTestCase(TestCase):
         response = self.client.delete(f"/articles/{self.article_0.slug}/comments/{self.comment_1.id}")
         self.assertEqual(response.status_code, 401)
         self.assertEqual(self.article_1.comment_set.count(), 2)
+
+    def test_reject_empty_comment_body_qp_smdjango_7_1(self):
+        response = self.client.post(
+            f"/articles/{self.article_0.slug}/comments",
+            json={"comment": {"body": ""}},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(
+            response.data,
+            {
+                "detail": [
+                    {
+                        "ctx": {"error": "can't be blank"},
+                        "loc": ["body", "data", "comment", "body"],
+                        "msg": "Value error, can't be blank",
+                        "type": "value_error",
+                    },
+                ],
+            },
+        )
+
+    def test_keep_rejected_empty_comment_out_of_list_qp_smdjango_7_2(self):
+        for comment in Comment.objects.all():
+            comment.delete()
+        self.client.post(
+            f"/articles/{self.article_1.slug}/comments",
+            json={"comment": {"body": ""}},
+        )
+        response = self.client.get(f"/articles/{self.article_1.slug}/comments")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"comments": []})
