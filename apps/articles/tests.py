@@ -10,6 +10,7 @@ from parameterized import parameterized
 from articles.api import router
 from articles.models import Article, Tag
 from helpers.jwt_utils import create_jwt_token
+from articles.api import tidy_tag_names
 
 User = get_user_model()
 
@@ -322,6 +323,23 @@ class ArticleViewSetTest(TestCase):
         response = self.client.post("/articles", json=new_article_data)
         self.assertEqual(response.status_code, 422)
 
+    def test_create_article_tidies_tag_list(self):
+        new_article_data = {
+            "article": {
+                "title": "New Test Title",
+                "description": "New Test Description",
+                "body": "New Test Content",
+                "tagList": [" Django", "django", "", "Ninja "],
+            }
+        }
+        response = self.client.post("/articles", json=new_article_data)
+        self.assertEqual(response.data["article"]["tagList"], ["Django", "Ninja"])
+
+    def test_update_article_tidies_tag_list(self):
+        update_article_data = {"article": {"tagList": [" Django", "django", "", "Ninja "]}}
+        response = self.client.put(f"/articles/{self.article.slug}", json=update_article_data)
+        self.assertEqual(response.data["article"]["tagList"], ["Django", "Ninja"])
+
     def test_get_article(self):
         response = self.client.get(f"/articles/{self.article.slug}")
         self.assertEqual(response.status_code, 200)
@@ -498,3 +516,19 @@ class TagViewSet(TestCase):
         data = loads(response.content)
         self.assertEqual(data, {"tags": mock.ANY})
         self.assertEqual(set(data["tags"]), {"red", "green", "blue"})
+
+
+class TidyTagNamesTest(TestCase):
+    def test_tidy_tag_names_trims_surrounding_spaces(self):
+        self.assertEqual(tidy_tag_names([" Ninja ", "Go"]), ["Ninja", "Go"])
+
+    def test_tidy_tag_names_drops_blank_tags(self):
+        self.assertEqual(tidy_tag_names(["Go", " ", "", "Ninja"]), ["Go", "Ninja"])
+
+    def test_tidy_tag_names_keeps_first_spelling_of_case_duplicates(self):
+        self.assertEqual(tidy_tag_names(["Ninja", "django", "Django", "Go"]), ["Ninja", "django", "Go"])
+
+    def test_tidy_tag_names_writes_nothing_to_database(self):
+        self.assertEqual(tidy_tag_names([" Django", "django", "", "Ninja "]), ["Django", "Ninja"])
+        self.assertEqual(Article.objects.count(), 0)
+        self.assertEqual(Tag.objects.count(), 0)

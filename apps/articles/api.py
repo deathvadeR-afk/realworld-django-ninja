@@ -68,10 +68,26 @@ def list_articles(
     }
 
 
+def tidy_tag_names(names: list[str]) -> list[str]:
+    """Trim tag names, drop blank ones and case-only repeats, keeping the first spelling and order. Writes nothing."""
+    tidied: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        trimmed = name.strip()
+        key = trimmed.lower()
+        if not trimmed or key in seen:
+            continue
+        seen.add(key)
+        tidied.append(trimmed)
+    return tidied
+
+
 @router.post("/articles", auth=TokenAuth(), response={201: Any, 409: Any, 422: Any})
 def create_article(request: AuthedRequest, data: ArticleCreateSchema) -> tuple[int, dict[str, Any]]:
     tag_objs = (
-        [Tag.objects.get_or_create(name=name)[0] for name in data.article.tags] if data.article.tags != EMPTY else []
+        [Tag.objects.get_or_create(name=name)[0] for name in tidy_tag_names(data.article.tags)]
+        if data.article.tags != EMPTY
+        else []
     )
     with transaction.atomic():
         try:
@@ -114,7 +130,11 @@ def update(request: AuthedRequest, slug: str, data: ArticlePartialUpdateSchema) 
         raise AuthorizationError
     update_data = data.article.dict(exclude_unset=True)
     new_tags = update_data.pop("tags", EMPTY)
-    tag_objs = [Tag.objects.get_or_create(name=name)[0] for name in new_tags] if new_tags is not EMPTY else EMPTY
+    tag_objs = (
+        [Tag.objects.get_or_create(name=name)[0] for name in tidy_tag_names(new_tags)]
+        if new_tags is not EMPTY
+        else EMPTY
+    )
     with transaction.atomic():
         updated_fields = []
         for attr, value in update_data.items():
