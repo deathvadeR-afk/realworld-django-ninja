@@ -10,6 +10,7 @@ from parameterized import parameterized
 from articles.api import router
 from articles.models import Article, Tag
 from helpers.jwt_utils import create_jwt_token
+from articles.api import tidy_tags
 
 User = get_user_model()
 
@@ -474,6 +475,47 @@ class ArticleViewSetTest(TestCase):
         self._valid_timestamps_in_output_dict(response.data["article"])
         self.assertEqual(self.article.favorites.count(), 0)
 
+    def test_create_article_saves_tidied_tags(self):
+        new_article_data = {
+            "article": {
+                "title": "New Test Title",
+                "description": "New Test Description",
+                "body": "New Test Content",
+                "tagList": [" Django", "django", "", "Ninja "],
+            }
+        }
+        response = self.client.post("/articles", json=new_article_data)
+        self.assertEqual(response.status_code, 201)
+        article = Article.objects.get(slug="new-test-title")
+        self.assertEqual(sorted(t.name for t in article.tags.all()), ["Django", "Ninja"])
+
+    def test_update_article_saves_tidied_tags(self):
+        update_article_data = {"article": {"tagList": [" Django", "django", "", "Ninja "]}}
+        response = self.client.put(f"/articles/{self.article.slug}", json=update_article_data)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(sorted(t.name for t in self.article.tags.all()), ["Django", "Ninja"])
+
+    def test_update_article_with_all_blank_tags_clears_tags(self):
+        self.article.tags.add(Tag.objects.create(name="red"))
+        update_article_data = {"article": {"tagList": [" ", ""]}}
+        response = self.client.put(f"/articles/{self.article.slug}", json=update_article_data)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.article.tags.count(), 0)
+
+    def test_create_article_with_all_blank_tags_has_no_tags(self):
+        new_article_data = {
+            "article": {
+                "title": "New Test Title",
+                "description": "New Test Description",
+                "body": "New Test Content",
+                "tagList": [" ", ""],
+            }
+        }
+        response = self.client.post("/articles", json=new_article_data)
+        self.assertEqual(response.status_code, 201)
+        article = Article.objects.get(slug="new-test-title")
+        self.assertEqual(article.tags.count(), 0)
+
 
 class TagViewSet(TestCase):
     def setUp(self):
@@ -498,3 +540,13 @@ class TagViewSet(TestCase):
         data = loads(response.content)
         self.assertEqual(data, {"tags": mock.ANY})
         self.assertEqual(set(data["tags"]), {"red", "green", "blue"})
+
+
+class TidyTagsTest(TestCase):
+    def test_tidy_tags_example_list(self):
+        self.assertEqual(tidy_tags([" Django", "django", "", "Ninja "]), ["Django", "Ninja"])
+
+    def test_tidy_tags_writes_no_rows(self):
+        tidy_tags([" Django", "django", "", "Ninja "])
+        self.assertEqual(Article.objects.count(), 0)
+        self.assertEqual(Tag.objects.count(), 0)
